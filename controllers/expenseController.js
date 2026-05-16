@@ -1,4 +1,4 @@
-const Expense = require('../models/Expense');
+const Expense = require('../models/Expenses');
 
 // @desc    Get all expenses
 // @route   GET /api/expenses
