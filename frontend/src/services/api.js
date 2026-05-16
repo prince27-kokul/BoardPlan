@@ -7,6 +7,18 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Add token to requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // Expense API calls
 export const expenseAPI = {
   getAll: () => api.get('/expenses'),
