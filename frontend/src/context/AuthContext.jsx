@@ -1,71 +1,104 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-const connectDB = require('./config/db');
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
-const app = express();
+const AuthContext = createContext();
 
-// Connect to MongoDB
-connectDB();
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-// Middleware
-const corsOptions = {
-  origin: (origin, callback) => {
-    const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+  // Load user from localStorage on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
     }
-  },
-  credentials: true,
+  }, []);
+
+  const login = async (email, password) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      return data;
+    } catch (err) {
+      const errorMsg = err.message || 'Login failed';
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (username, email, password, passwordConfirm) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password, passwordConfirm }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Registration failed');
+      }
+
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      return data;
+    } catch (err) {
+      const errorMsg = err.message || 'Registration failed';
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    setError('');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, isLoading, error, login, register, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
-app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Basic Health Check Route
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ message: 'Server is running', status: 'OK' });
-});
-
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/expenses', require('./routes/expenses'));
-
-// Error handling middleware (must be last)
-app.use((err, req, res, next) => {
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      error: Object.values(err.errors).map(e => e.message),
-    });
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
   }
-
-  // Mongoose cast error (invalid ID format)
-  if (err.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid ID format',
-    });
-  }
-
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err : undefined,
-  });
-});
-
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-});
+  return context;
+};
