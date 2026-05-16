@@ -9,7 +9,18 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -18,15 +29,32 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'Server is running', status: 'OK' });
 });
 
-// Routes will be added here
-// app.use('/api/expenses', require('./routes/expenses'));
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/expenses', require('./routes/expenses'));
 
-// Error handling middleware
+// Error handling middleware (must be last)
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    message: 'Internal Server Error', 
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+  // Mongoose validation error
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: Object.values(err.errors).map(e => e.message),
+    });
+  }
+
+  // Mongoose cast error (invalid ID format)
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid ID format',
+    });
+  }
+
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+    error: process.env.NODE_ENV === 'development' ? err : undefined,
   });
 });
 
